@@ -32,12 +32,19 @@ def load_session_files(
     spikes="spike_times.pkl",
     bhv="[0-9]+_[a-z]+_(VR|airpuff)_behave\\.pkl",
     good_neurs="good_neurons.pkl",
+    dlc_template="[0-9]+_[a-z]+_dlc_df_restruct.pkl",
 ):
     out_dict = {}
     out_dict["spikes"] = pd.read_pickle(open(os.path.join(folder, spikes), "rb"))
     bhv_fl = u.get_matching_files(folder, bhv)[0]
     out_dict["bhv"] = pd.read_pickle(open(bhv_fl, "rb"))
-
+    try:
+        dlc_fl = u.get_matching_files(folder, dlc_template)[0]
+        dlc_df = pd.read_pickle(open(dlc_fl, "rb"))
+        dlc_df["Trial"] = dlc_df["trial"]
+        out_dict["dlc_markers"] = dlc_df
+    except IndexError:
+        print("no dlc file found in {}".format(folder))
     out_dict["good_neurs"] = pd.read_pickle(
         open(os.path.join(folder, good_neurs), "rb")
     )
@@ -362,6 +369,22 @@ def load_gulli_hashim_data_folder(
             data_fl["good_neurs"],
         )
         data_all = data_fl["bhv"]["data_frame"]
+        if "dlc_markers" in data_fl.keys():
+            data_all = pd.merge(
+                data_all,
+                data_fl["dlc_markers"],
+                on="Trial",
+                suffixes=(None, "_dlc"),
+                how="left",
+            )
+            new_frames = []
+            for i, cf in enumerate(data_all["cam_frames"]):
+                mask = np.logical_and(
+                    cf >= data_all["Trial Start"][i],
+                    cf < data_all["Trial End"][i],
+                )
+                new_frames.append(np.array(cf)[mask])
+            data_all["video_frames"] = new_frames
         if len(data_all) > len(spikes):
             diff = len(data_all) - len(spikes)
             print(
